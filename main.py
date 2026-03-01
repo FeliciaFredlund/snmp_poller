@@ -2,9 +2,10 @@
 This SNMP poller will load a yaml config file to figure out target SNMP agents and the OIDs to get from them.
 It is a CLI tool. The easiest way to run it with default configuration file is use run.sh
 """
+
 from enum import Enum
 from pathlib import Path
-import argparse
+import argparse, sys
 
 class ExitCode(Enum):
     SUCCESS = 0
@@ -12,9 +13,9 @@ class ExitCode(Enum):
     FAILURE = 2             # no data or invalid config
 
 class LogLevel(Enum):
-    NONE = 0,
-    INFO = 1,
-    WARNING = 2,
+    NONE = 0
+    INFO = 1
+    WARNING = 2
     ERROR = 3
 
 def main():
@@ -23,13 +24,15 @@ def main():
     """
 
     args = parseArgs()
-    print(args)
+
+    log_level = LogLevel[args.log_level]
+
+    # Set up logging!!!!
     
-    #config_file, output_file, log_level = validateArgs(args)
+    config_string, output_filepath = validateArgs(args)
 
-    #print(config_file, output_file, log_level)
+    print(config_string, output_filepath, log_level)
 
-    # SET UP LOGGING?!?!
 
 def parseArgs() -> argparse.Namespace:
     """
@@ -45,37 +48,37 @@ def parseArgs() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def validateArgs(args: argparse.Namespace) -> str, Path, LogLevel:
+def validateArgs(args: argparse.Namespace) -> tuple[str, Path]:
     """
     Validates the args. Config needs to be an existing file; out if it exists need to be a writeable file; log-level need to parse to LogLevel enum.
     """
     
-    pass
+    # validating config file path and reading the file
+    config_path = Path(args.config)
+    try:
+        config_string = config_path.read_text()
+    except Exception as e:
+        print("ERROR:", e)
+        sys.exit(2)
+
+    # validating that output path is a write-able file if it exists
+    output_path = Path(args.out)
+
+    if output_path.is_file():
+        try:
+            with output_path.open("a") as f:
+                f.close()
+        except OSError as e:
+            print("ERROR: output file does not have write permission")
+        except Exception as e:
+            print("ERROR:", e)
+
+    return config_string, output_path
 
 """
-    read_path = Path("input.txt")
-    write_path = Path("output.txt")
-
-    if not read_path.is_file():    OOOOOOORRRRR Path.read_text
-        raise FileNotFoundError(read_path)
-
-    if write_path.is_file():
-        try:
-            with write_path.open("a"):
-                pass
-        except OSError as e:
-            raise PermissionError(write_path) from e
-
-
 try:
-    content = read_path.read_text()  # can raise FileNotFoundError, PermissionError, UnicodeDecodeError
     data = yaml.safe_load(content)   # can raise yaml.YAMLError for invalid YAML
-except FileNotFoundError:
-    print("File does not exist")
-except PermissionError:
-    print("Cannot read file")
-except UnicodeDecodeError:
-    print("File encoding is invalid")
+
 except yaml.YAMLError as e:
     print("YAML parse error:", e)
 """

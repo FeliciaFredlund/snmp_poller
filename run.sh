@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python3 main.py --config A --out B --log-level ERROR
+python3 main.py --config "configs/config.yaml" --out "output/out.json" --log-level ERROR
