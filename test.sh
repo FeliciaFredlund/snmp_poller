@@ -1,3 +1,3 @@
 #!/bin/bash
 
-python3 test_config.py -v
+python3 -m unittest -v
