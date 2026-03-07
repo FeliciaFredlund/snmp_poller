@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import argparse, sys, yaml, logging, datetime
+import argparse, sys, yaml, logging, ipaddress
 
 
 class Status(Enum):
@@ -16,12 +16,12 @@ class Status(Enum):
     FAILED = 2             # no data or invalid config
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 
 def main():
     """
-    Runs the program by parsing arguments, loading the yaml, and then starting the poller
+    Runs the program by parsing arguments, loading the yaml, and then starting the poller. OBS: only SNMPv2c is supported currently
     """
 
     # Reading CLI arguments, set up logging and validate arguments
@@ -32,7 +32,10 @@ def main():
 
     # Validate config yaml
     config = parseYaml(config_string)
-    validateYaml(config)
+    valid, error = validateYaml(config)
+    if not valid:
+        logger.error(msg=error)
+        sys.exit(Status.FAILED.value)
 
     # Merge defaults with targets
 
@@ -44,9 +47,13 @@ def main():
 
 
     # output json
-
+    if str(output_filepath) == "-":
+        print("OUTPUT PRINT OF JSON")
+    else:
+        print("save the data to file")
     
     logger.info('SNMP poller closing')
+    
     #sys.exit(Status.OK.value)   <---- should depend on if any target only returned partial data or if all were fully successful
 
 
@@ -91,6 +98,7 @@ def parseArgs() -> argparse.Namespace:
 def validateArgs(args: argparse.Namespace) -> tuple[str, Path]:
     """
     Validates the args. Config needs to be a readable file and out has to be a write-able file if it exists.
+    Returns a tuple with the config yaml as a string and a Path object to the output file.
     """
     
     # validating config file path and reading the file
@@ -123,7 +131,7 @@ def validateArgs(args: argparse.Namespace) -> tuple[str, Path]:
 
 def parseYaml(yaml_string: str) -> Any:
     """
-    Parses a string that is a yaml
+    Parses a string that is a yaml. Returns the python object that represents the yaml.
     """
 
     try:
@@ -136,19 +144,114 @@ def parseYaml(yaml_string: str) -> Any:
     return data
 
 
-def validateYaml(yaml: Any):
+def validateYaml(yaml: Any) -> tuple[bool, str]:
     """
-    Validates the yaml data to fulfill this programs needs
+    Validates the yaml data to fulfill this programs needs.
+    Returns a bool telling if validation was valid or not, if not valid (aka false), the string holds the error.
     """
+    see_example = ', see example_config.yaml or README.md for correct yaml'
 
-    '''
-    Write test_config.py that tests config parsing/validation without SNMP calls. Pick one test:
-        • Missing targets key must raise a validation error.
-        • Target missing ip must be rejected.
-        • Non-numeric timeout_s must be rejected.
-    '''
-    pass
+    if not isinstance(yaml, dict):
+        return False, 'config needs to convert to a dictionary' + see_example
+    
+    # checking defaults
+    if 'defaults' not in yaml:
+        return False, 'config needs defaults' + see_example
+    
+    defaults = yaml.get('defaults')     # type: ignore
+    if not isinstance(defaults, dict):
+        return False, 'defaults needs to convert to a dictionary' + see_example
+    if 'snmp_version' not in defaults or not isinstance(defaults['snmp_version'], str):
+        return False, 'defaults needs snmp_version that converts to a string' + see_example
+    if 'timeout_s' not in defaults or not isinstance(defaults['timeout_s'], (int, float)):
+        return False, 'defaults needs timeout_s that converts to a number' + see_example
+    if 'retries' not in defaults or not isinstance(defaults['retries'], int):
+        return False, 'defaults needs retries that converts to an integer' + see_example
+    if 'target_budget_s' not in defaults or not isinstance(defaults['target_budget_s'], (int, float)):
+        return False, 'defaults needs target_budget_s that converts to a number' + see_example
 
+    # if oids key doesn't exist, oids will be None
+    # no oids is fine    
+    oids = defaults.get('oids')     # type: ignore
+    if oids is not None:
+        if not isinstance(oids, list):
+            return False, 'oids needs to be a list' + see_example
+        
+        for oid in oids:            # type: ignore
+            if not isinstance(oid, str):
+                return False, 'every oid in defaults need to be a string' + see_example
+    
+    
+    # checking targets
+    if 'targets' not in yaml:
+        return False, 'config needs targets' + see_example
+    
+    targets = yaml.get('targets')       # type: ignore
+    if not isinstance(targets, list):
+        return False, 'targets needs to convert to a list' + see_example
+
+    for i, target in enumerate(targets):    # type: ignore
+        target_number = i + 1
+
+        if not isinstance(target, dict):
+            return False, f'target number {target_number} needs to convert to a dictionary' + see_example
+
+        if 'name' not in target or not isinstance(target['name'], str):
+            return False, f'target number {target_number} needs a name that converts to a string' + see_example
+
+        if 'ip' not in target:
+            return False, f'target number {target_number} needs an ip' + see_example
+        try:
+            ipaddress.ip_address(target['ip'])      # type:ignore
+        except (ValueError, TypeError):
+            return False, f'target number {target_number} has an invalid IP address' + see_example
+
+        # community is optional for v3
+        if 'community' in target and not isinstance(target['community'], str):
+            return False, f'target number {target_number} has a community that converts to a string' + see_example
+
+        # if oids key doesn't exist, oids will be None
+        # no oids is fine  
+        oids = target.get('oids')       # type: ignore
+        if oids is not None:
+            if not isinstance(oids, list):
+                return False, f"target number {target_number}'s oids needs to converts to a list" + see_example
+
+            for oid in oids:        # type: ignore
+                if not isinstance(oid, str):
+                    return False, f"target number {target_number}'s oids need to be a string" + see_example
+
+    return True, ""
+
+
+def mergeDefaults(defaults: dict[str, Any], targets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Merges defaults with targets, where target values supersede defaults.
+    Removes duplicate OIDs if they exist.
+    Returns a list of merged targets.
+    """
+    '''
+    merged_targets = []
+
+    for target in targets:
+        # Merge target into defaults
+        merged = {**defaults, **target}
+
+        # Merge 'oids' specifically, removing duplicates
+        if 'oids' in defaults and 'oids' in target:
+            merged['oids'] = list(set(defaults['oids'] + target['oids']))
+
+        if merged['snmp_version'] == 'v2c' and 'community' not in target:
+            # write error log and exit
+        if not merged['oids']:
+            # write error log and exit
+
+        merged_targets.append(merged)
+
+    # Now merged_targets is ready to use for SNMP commands
+    '''
+
+    return []
 
 if __name__ == '__main__':
     main()
