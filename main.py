@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from datetime import date
 
-import argparse, sys, yaml, logging, ipaddress
+import argparse, sys, yaml, logging, ipaddress, json
 
 
 class Status(Enum):
@@ -41,21 +41,70 @@ def main():
     # Merge defaults with targets
     targets = mergeDefaults(config['defaults'], config['targets'])
 
-    # build snmpget commands
-    cmds = buildSnmpCommands(targets)
+    data = []
+    exit_code = Status.OK.value
 
-    # run snmpget commands
+    for target in targets:
+        # build snmpget commands
+        cmds = buildSnmpCommands(target)
+        
+        # run snmpget commands
 
 
-    # output json
+    '''
+      timeout_s: 2.5         # per request
+      retries: 1             # retry only on timeouts
+      target_budget_s: 10 
+
+
+
+    snmpget -v2c -c public 192.168.1.10 1.3.6.1.2.1.1.3.0
+    DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (123456789) 14 days, 6:56:07.89
+
+    snmpget -v2c -c public 192.168.1.10 1.3.6.1.2.1.1.5.0
+    SNMPv2-MIB::sysName.0 = STRING: router01
+
+    snmpget -v2c -c public 192.168.1.10 1.3.6.1.2.1.2.2.1.8.1
+    IF-MIB::ifOperStatus.1 = INTEGER: up(1)
+
+    snmpget -v2c -c public 192.168.1.10 1.3.6.1.2.1.1.4.0
+    SNMPv2-MIB::sysContact.0 = STRING: admin@example.com
+
+    snmpget -v2c -c public 192.168.1.10 1.3.6.1.2.1.2.1.0
+    IF-MIB::ifNumber.0 = INTEGER: 8
+
+    line = "SNMPv2-MIB::sysName.0 = STRING: router01"
+
+    # Split on '=' first
+    _, value_part = line.split('=', 1)
+    # value_part = " STRING: router01"
+
+    # Split on ':' to separate type and value
+    value_type, value = value_part.split(':', 1)
+    value = value.strip()
+
+    print(value_type.strip())  # "STRING"
+    print(value)               # "router01"
+
+    '''
+
+    # output data as json
+    output = json.dumps(data, indent=2)
     if str(output_filepath) == "-" or str(output_filepath) == ".":
-        print("OUTPUT PRINT OF JSON")
+        print('Output:')
+        print(output)
     else:
-        print("save the data to file")
+        try:
+            with output_filepath.open("w") as f:
+                f.write(output)
+        except Exception as e:
+            logger.error(msg='writing to output file failed : ' + str(e))
+            print('writing to stdout instead:')
+            print(output)
     
     logger.info('SNMP poller closing\n')
     
-    #sys.exit(Status.OK.value)   <---- should depend on if any target only returned partial data or if all were fully successful
+    sys.exit(exit_code)
 
 
 def setUpLogging(log_level: str):
@@ -256,13 +305,19 @@ def mergeDefaults(defaults: dict[str, Any], targets: list[dict[str, Any]]) -> li
     return merged_targets       # type:ignore
 
 
-def buildSnmpCommands(targets: list[dict[str, Any]]) -> dict[str, list[str]]:
+def buildSnmpCommands(target: dict[str, Any]) -> list[list[str]]:
     """
-    Takes a list of targets with their settings and builds all necessary SNMP commands.
-    Returns a dictionary that holds the SNMP commands in a list per target (key = target's name)
+    Takes a target with their settings and builds all SNMP commands.
+    Returns a list of all commands as strings.
     """
-    pass
 
+    cmds = []
+    cmd_template = ['snmpget', '-' + target['snmp_version'], "-c", target['community'], target['ip']]       # type:ignore
+
+    for oid in target['oids']:
+        cmds.append(cmd_template + [oid])         # type:ignore
+
+    return cmds     # type:ignore
 
 
 if __name__ == '__main__':
