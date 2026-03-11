@@ -6,6 +6,7 @@ It is a CLI tool. The easiest way to run it with default configuration file is u
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from datetime import date
 
 import argparse, sys, yaml, logging, ipaddress
 
@@ -38,21 +39,21 @@ def main():
         sys.exit(Status.FAILED.value)
 
     # Merge defaults with targets
-
+    targets = mergeDefaults(config['defaults'], config['targets'])
 
     # build snmpget commands
-
+    cmds = buildSnmpCommands(targets)
 
     # run snmpget commands
 
 
     # output json
-    if str(output_filepath) == "-":
+    if str(output_filepath) == "-" or str(output_filepath) == ".":
         print("OUTPUT PRINT OF JSON")
     else:
         print("save the data to file")
     
-    logger.info('SNMP poller closing')
+    logger.info('SNMP poller closing\n')
     
     #sys.exit(Status.OK.value)   <---- should depend on if any target only returned partial data or if all were fully successful
 
@@ -67,7 +68,8 @@ def setUpLogging(log_level: str):
 
     fmt = logging.Formatter(fmt='%(asctime)s : %(levelname)s : %(message)s', datefmt='%Y-%m-%d %I:%M:%S')
 
-    file_handler = logging.FileHandler('logs/snmp_poller.log')
+    Path('logs').mkdir(exist_ok=True)
+    file_handler = logging.FileHandler(f'logs/{date.today():%Y-%m-%d}_snmp_poller.log')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(fmt)
 
@@ -89,7 +91,7 @@ def parseArgs() -> argparse.Namespace:
         description='Gathers SNMP data from targets in specified config file.'
     )
     parser.add_argument('--config', required=True, help='specifies the configuration yaml file')
-    parser.add_argument('--out', required=True, help='specifies the json file the output (data) is written to')
+    parser.add_argument('--out', default="-", help='specifies the json file the output (data) is written to')
     parser.add_argument("--log-level", choices=['INFO', 'WARNING', 'ERROR'], default='ERROR', help='specifices the log level for stdout')
 
     return parser.parse_args()
@@ -230,28 +232,38 @@ def mergeDefaults(defaults: dict[str, Any], targets: list[dict[str, Any]]) -> li
     Removes duplicate OIDs if they exist.
     Returns a list of merged targets.
     """
-    '''
+    
     merged_targets = []
 
     for target in targets:
         # Merge target into defaults
         merged = {**defaults, **target}
 
-        # Merge 'oids' specifically, removing duplicates
+        # Target oids list overwrites defaults, but we want to combine them and remove duplicates
         if 'oids' in defaults and 'oids' in target:
             merged['oids'] = list(set(defaults['oids'] + target['oids']))
 
         if merged['snmp_version'] == 'v2c' and 'community' not in target:
-            # write error log and exit
+            error = 'Target ' + merged['name'] + ' needs an SNMP community'
+            logger.error(msg=error)
+            sys.exit(Status.FAILED.value)
         if not merged['oids']:
-            # write error log and exit
+            error = 'Target ' + merged['name'] + ' needs oids, none are in defaults'
+            sys.exit(Status.FAILED.value)
+        
+        merged_targets.append(merged)           # type:ignore
 
-        merged_targets.append(merged)
+    return merged_targets       # type:ignore
 
-    # Now merged_targets is ready to use for SNMP commands
-    '''
 
-    return []
+def buildSnmpCommands(targets: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """
+    Takes a list of targets with their settings and builds all necessary SNMP commands.
+    Returns a dictionary that holds the SNMP commands in a list per target (key = target's name)
+    """
+    pass
+
+
 
 if __name__ == '__main__':
     main()
