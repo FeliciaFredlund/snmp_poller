@@ -48,7 +48,10 @@ def main():
     message = 'Starting poll run: ' + str(len(targets)) + ' targets, output=' + str(output_channel)
     logger.info(msg=message)
     data = {}
-    exit_code = Status.OK.value
+    
+    # counts the Status values of the polling of each target
+    polling_status_value = 0
+    
     data['meta_data'] = {                           # type:ignore
         'time_of_run': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'config_file': args.config
@@ -58,16 +61,25 @@ def main():
     duration = 0.0
     for target in targets:
         result, status = pollTarget(target)
-        
-        # if status has a higher enum value it means it failed more than any previous target so update the exit code
-        if status.value > exit_code:
-            exit_code = status.value
+
+        polling_status_value += status.value
 
         duration += result['runtime']
         targets_data.append(result)                         # type:ignore
 
     data['meta_data']['duration'] = duration
     data['targets'] = targets_data
+
+    # if polling_status_value is 0 it means all targets were polled successfully
+    # else if it is more than 0 but less than double the number of targets, some polls were successfull
+    # else if it is double the number of targets it means every target returned failure (value 2)
+    exit_code = -1
+    if polling_status_value == 0:
+        exit_code = Status.OK.value
+    elif polling_status_value < (len(targets) * 2):
+        exit_code = Status.PARTIAL_SUCCESS.value
+    else:
+        exit_code = Status.FAILED.value
 
     message = 'Finished poll with status=' + Status(exit_code).name + ' in ' + '{:.1f}'.format(duration) + 's'
     logger.info(msg=message)
@@ -395,8 +407,9 @@ def runSnmpCommand(command: list[str], timeout_s: float, retries: int) -> tuple[
             return result.stdout, Status.OK
         
         except subprocess.TimeoutExpired:
-            message = 'Timeout on ' + command[-1] + ', remaining retries=' + str(remaining_retries)
-            logger.warning(msg=message)
+            if remaining_retries > 0:
+                message = 'Timeout on ' + command[-1] + ', remaining retries=' + str(remaining_retries)
+                logger.warning(msg=message)
             remaining_retries -= 1
 
         except Exception as e:
@@ -411,7 +424,7 @@ def filterSnmpOutput(output: str) -> str:
     Returns only the value
     """
     value_with_type = output.split("=", 1)[1]
-    value = value_with_type.split(":", 1)[1]
+    value = value_with_type.split(":", 1)[1]. strip()
 
     return value
 
