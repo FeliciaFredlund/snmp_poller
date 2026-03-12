@@ -1,0 +1,19 @@
+defaults:
+  snmp_version: "v2c"
+  timeout_s: 2.5
+  retries: 1
+  target_budget_s: 10
+  oids:
+    - "sysUpTime.0"
+    - "sysName.0"
+    - "sysContact.0"
+
+targets:
+  - name: "localhost"
+    ip: "127.0.0.1"
+    community: "public"
+    oids:
+      - "ifOperStatus.1"
+  - name: "Felicia's Switch"
+    ip: "172.16.0.157"
+    community: "public"
