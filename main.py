@@ -1,6 +1,6 @@
 """
 This SNMP poller will load a yaml config file to figure out target SNMP agents and the OIDs to get from them.
-It is a CLI tool. The easiest way to run it with default configuration file is use run.sh
+It is a CLI tool. The easiest way to run it with default configuration file is to use run.sh
 """
 
 from enum import Enum
@@ -22,7 +22,7 @@ logger = logging.getLogger()
 
 def main():
     """
-    Runs the program by parsing arguments, loading the yaml, and then starting the poller. OBS: only SNMPv2c is supported currently
+    Runs the program step by step.
     """
 
     # Reading CLI arguments, set up logging and validate arguments

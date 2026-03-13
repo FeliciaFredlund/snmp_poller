@@ -4,16 +4,23 @@ defaults:
   retries: 1
   target_budget_s: 10
   oids:
-    - "sysUpTime.0"
     - "sysName.0"
     - "sysContact.0"
+    - "sysUpTime.0"
 
 targets:
   - name: "localhost"
     ip: "127.0.0.1"
     community: "public"
     oids:
-      - "ifOperStatus.1"
+      - "ifOperStatus.5"
   - name: "Felicia's Switch"
     ip: "172.16.0.157"
     community: "public"
+    oids:
+      - "ifName.1"
+      - "ifAdminStatus.1"
+      - "ifOperStatus.1"
+  - name: "Nonexistant router"
+    ip: "10.0.0.1"
+    community: "public" 
