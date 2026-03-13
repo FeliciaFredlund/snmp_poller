@@ -402,10 +402,10 @@ def runSnmpCommand(command: list[str], timeout_s: float, retries: int) -> tuple[
                 timeout=timeout_s
             )
             if result.returncode != 0:
-                return result.stderr, Status.FAILED
+                return result.stderr.strip(), Status.FAILED
             
             if 'no such instance' in result.stdout.lower():
-                return result.stdout, Status.FAILED
+                return result.stdout.strip(), Status.FAILED
 
             return result.stdout, Status.OK
         
