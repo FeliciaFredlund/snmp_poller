@@ -424,7 +424,7 @@ def filterSnmpOutput(output: str) -> str:
     Returns only the value
     """
     value_with_type = output.split("=", 1)[1]
-    value = value_with_type.split(":", 1)[1]. strip()
+    value = value_with_type.split(":", 1)[1].strip()
 
     return value
 
