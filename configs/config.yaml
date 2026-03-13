@@ -14,6 +14,7 @@ targets:
     community: "public"
     oids:
       - "ifOperStatus.5"
+      - "nonExistantOID.0"
   - name: "Felicia's Switch"
     ip: "172.16.0.157"
     community: "public"
